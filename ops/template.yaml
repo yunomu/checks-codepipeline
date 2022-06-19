@@ -9,8 +9,14 @@ Parameters:
     Type: String
   TargetStackName:
     Type: String
-  NotifierStackName:
+  NotifyFunctionArn:
     Type: String
+  GithubConnectionID:
+    Type: String
+    Default: '{{resolve:ssm:/stack/env/GithubConnectionID:1}}'
+  GithubConnectionPolicyArn:
+    Type: String
+    Default: '{{resolve:ssm:/stack/env/GithubConnectionPolicyArn:1}}'
   BuildImage:
     Type: String
     Default: aws/codebuild/standard:5.0
@@ -88,7 +94,7 @@ Resources:
             Action:
               - sts:AssumeRole
       ManagedPolicyArns:
-        - '{{resolve:ssm:/stack/env/GithubConnectionPolicyArn:1}}'
+        - !Ref GithubConnectionPolicyArn
         - !Ref LogsPolicy
         - !Ref BuildBucketRWPolicy
       Policies:
@@ -180,7 +186,7 @@ Resources:
         - !Ref PipelinePolicy
         - !Ref LogsPolicy
         - !Ref BuildBucketRWPolicy
-        - '{{resolve:ssm:/stack/env/GithubConnectionPolicyArn:1}}'
+        - !Ref GithubConnectionPolicyArn
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
@@ -199,7 +205,7 @@ Resources:
                 Provider: CodeStarSourceConnection
                 Version: 1
               Configuration:
-                ConnectionArn: '{{resolve:ssm:/stack/env/GithubConnectionID:1}}'
+                ConnectionArn: !Ref GithubConnectionID
                 FullRepositoryId: !Ref GithubRepoId
                 BranchName: !Ref GithubBranch
                 OutputArtifactFormat: CODEBUILD_CLONE_REF
@@ -259,7 +265,7 @@ Resources:
             - CANCELED
       Targets:
         - Id: ChecksCodepipelineNotifier
-          Arn: !Sub "{{resolve:ssm:/stack/${NotifierStackName}/NotifyFunctionArn:1}}"
+          Arn: !Ref NotifyFunctionArn
 
 Outputs:
   Pipeline:
