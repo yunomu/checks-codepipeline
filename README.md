@@ -26,27 +26,29 @@ Parameters:
 
 Resources:
   EventsRule:
-    EventPattern:
-      source:
-        - aws.codepipeline
-      region:
-        - !Ref AWS::Region
-      account:
-        - !Ref AWS::AccountId
-      detail-type:
-        - "CodePipeline Pipeline Execution State Change"
-        - "CodePipeline Action Execution State Change"
-      detail:
-        pipeline:
-          - !Ref Pipeline
-        state:
-          - STARTED
-          - SUCCEEDED
-          - FAILED
-          - CANCELED
-    Targets:
-      Id: ChecksCodepipelineNotifier
-      Arn: !Ref NotifyFunctionArn
+    Type: AWS::Events::Rule
+    Properties
+      EventPattern:
+        source:
+          - aws.codepipeline
+        region:
+          - !Ref AWS::Region
+        account:
+          - !Ref AWS::AccountId
+        detail-type:
+          - "CodePipeline Pipeline Execution State Change"
+          - "CodePipeline Action Execution State Change"
+        detail:
+          pipeline:
+            - !Ref Pipeline
+          state:
+            - STARTED
+            - SUCCEEDED
+            - FAILED
+            - CANCELED
+      Targets:
+        Id: ChecksCodepipelineNotifier
+        Arn: !Ref NotifyFunctionArn
 ```
 
 # Development
