@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go v1.44.36
 	github.com/bradleyfalzon/ghinstallation/v2 v2.0.4
 	github.com/google/go-github/v45 v45.1.0
+	github.com/google/subcommands v1.2.0
 	go.uber.org/zap v1.21.0
 )
 

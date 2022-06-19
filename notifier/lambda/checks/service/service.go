@@ -99,7 +99,7 @@ func (s *Service) handle(ctx context.Context, event *events.CloudWatchEvent) err
 		return err
 	}
 
-	ss := strings.Split("/", stat.RepoId)
+	ss := strings.Split(stat.RepoId, "/")
 	if len(ss) != 2 {
 		return errors.New("Invalid repoId in pipeline configuration")
 	}

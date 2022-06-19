@@ -1,0 +1,17 @@
+version: 0.2
+
+env:
+  parameter-store:
+    GITHUB_APP_ID: /stack/env/GithubAppID
+    GITHUB_INSTALLATION_ID: /stack/env/GithubInstallationID
+    GITHUB_PK_SECRET_NAME: /stack/env/GithubPKSecretName
+
+phases:
+  pre_build:
+    commands:
+      - sam --version
+
+  build:
+    commands:
+      - cd notifier
+      - sam deploy --stack-name $STACK_NAME --region $REGION --parameter-overrides GithubAppID=$GITHUB_APP_ID GithubInstallationID=$GITHUB_INSTALLATION_ID GithubPKSecretName=$GITHUB_PK_SECRET_NAME --resolve-s3 --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset --no-progressbar --debug

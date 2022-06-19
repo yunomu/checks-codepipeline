@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ops
+
+Parameters:
+  GithubRepoId:
+    Type: String
+  GithubBranch:
+    Type: String
+  TargetStackName:
+    Type: String
+  NotifierStackName:
+    Type: String
+  BuildImage:
+    Type: String
+    Default: aws/codebuild/standard:5.0
+  DeployImage:
+    Type: String
+    Default: aws/codebuild/standard:5.0
+
+Resources:
+  BuildBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: 3
+            Status: Enabled
+
+  BuildBucketRWPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:PutObjectTagging
+              - s3:GetObject
+              - s3:GetObjectTagging
+            Resource:
+              - !Join
+                - "/"
+                - - !GetAtt BuildBucket.Arn
+                  - '*'
+
+  BuildBucketReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectTagging
+            Resource:
+              - !Join
+                - "/"
+                - - !GetAtt BuildBucket.Arn
+                  - '*'
+
+  LogsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - "*"
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - '{{resolve:ssm:/stack/env/GithubConnectionPolicyArn:1}}'
+        - !Ref LogsPolicy
+        - !Ref BuildBucketRWPolicy
+      Policies:
+        - PolicyName: GetParameter
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameters
+                Resource:
+                  - "*"
+
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      ServiceRole: !Ref BuildRole
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: !Ref BuildImage
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: ops/build.yml
+      Artifacts:
+        Type: CODEPIPELINE
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  DeployProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      ServiceRole: !Ref DeployRole
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: !Ref DeployImage
+        EnvironmentVariables:
+          - Name: STACK_NAME
+            Value: !Ref TargetStackName
+          - Name: REGION
+            Value: !Ref AWS::Region
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: ops/deploy.yml
+      Artifacts:
+        Type: CODEPIPELINE
+
+  PipelinePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - codebuild:StartBuild
+              - codebuild:BatchGetBuilds
+            Resource:
+              - !GetAtt BuildProject.Arn
+              - !GetAtt DeployProject.Arn
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref PipelinePolicy
+        - !Ref LogsPolicy
+        - !Ref BuildBucketRWPolicy
+        - '{{resolve:ssm:/stack/env/GithubConnectionPolicyArn:1}}'
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref BuildBucket
+      Stages:
+        - Name: SourceStage
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: 1
+              Configuration:
+                ConnectionArn: '{{resolve:ssm:/stack/env/GithubConnectionID:1}}'
+                FullRepositoryId: !Ref GithubRepoId
+                BranchName: !Ref GithubBranch
+                OutputArtifactFormat: CODEBUILD_CLONE_REF
+                DetectChanges: true
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+        - Name: BuildStage
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref BuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: DeployStage
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref DeployProject
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+  NotifierEventsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.codepipeline
+        region:
+          - !Ref AWS::Region
+        account:
+          - !Ref AWS::AccountId
+        detail-type:
+          - "CodePipeline Pipeline Execution State Change"
+          - "CodePipeline Action Execution State Change"
+        detail:
+          pipeline:
+            - !Ref Pipeline
+          state:
+            - STARTED
+            - SUCCEEDED
+            - FAILED
+            - CANCELED
+      Targets:
+        - Id: ChecksCodepipelineNotifier
+          Arn: !Sub "{{resolve:ssm:/stack/${NotifierStackName}/NotifyFunctionArn:1}}"
+
+Outputs:
+  Pipeline:
+    Value: !Ref Pipeline

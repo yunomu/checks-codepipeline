@@ -1,0 +1,17 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - go version
+      - sam --version
+
+  build:
+    commands:
+      - cd notifier
+      - go test ./...
+      - sam build
+
+artifacts:
+  files:
+    - '**/*'
