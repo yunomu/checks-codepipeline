@@ -63,3 +63,32 @@ Resources:
 |Timestamp  |N   |   |   |
 |CheckRunId |N   |   |   |
 |Expired    |N   |   |TTL|
+
+## Structure
+
+```mermaid
+flowchart LR
+  subgraph notifier[check-codepipeline/notifier]
+    Notifier
+    PipelineDB[(Pipeline DB)]
+    
+    Notifier --- PipelineDB
+  end
+  subgraph Github
+    Checks
+  end
+  subgraph Other[Your CodePipeline]
+    direction BT
+    
+    Pipeline
+    EventsRule
+    
+    Pipeline -. Start .-> EventsRule
+    Pipeline -. Change status .-> EventsRule
+    Pipeline -. End .-> EventsRule
+  end
+
+  Notifier -- Update --> Checks
+  EventsRule -- Invoke --> Notifier
+  ops[check-codepipeline/ops] -. Deploy .-> notifier
+```
