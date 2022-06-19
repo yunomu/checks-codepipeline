@@ -22,7 +22,8 @@ Add the following resources to your pipeline
 Parameters:
   PipelineName:         # Your pipeline name
     Type: String
-  NotifierFunctionArn:  # Your pipeline name
+  NotifierFunctionArn:  # Output of notifier stack
+    Type: String
 
 Resources:
   EventsRule:

@@ -110,3 +110,7 @@ Resources:
       Type: String
       Name: !Sub "/stack/${AWS::StackName}/NotifyFunctionArn"
       Value: !GetAtt NotifyFunction.Arn
+
+Outputs:
+  NotifyFunctionArn:
+    Value: !GetAtt NotifyFunction.Arn
