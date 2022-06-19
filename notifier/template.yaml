@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: checks-codepipeline
+
+Parameters:
+  GithubAppID:
+    Type: String
+  GithubInstallationID:
+    Type: String
+  GithubPKSecretName:
+    Type: String
+
+Resources:
+  PipelineDB:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ExecutionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ExecutionId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: Expired
+        Enabled: true
+
+  PipelineDBPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PutItem
+              - dynamodb:GetItem
+            Resource:
+              - !GetAtt PipelineDB.Arn
+
+  ReadGithubPKSecretPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${GithubPKSecretName}"
+
+  LogsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              - "*"
+
+  GetPipelineStatPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - codepipeline:GetPipeline
+              - codepipeline:ListActionExecutions
+            Resource:
+              - "*"
+
+  NotifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/checks
+      Handler: checks
+      Runtime: go1.x
+      Tracing: Active
+      Policies:
+        - !Ref PipelineDBPolicy
+        - !Ref LogsPolicy
+        - !Ref ReadGithubPKSecretPolicy
+        - !Ref GetPipelineStatPolicy
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          GITHUB_APP_ID: !Ref GithubAppID
+          GITHUB_INSTALLATION_ID: !Ref GithubInstallationID
+          GITHUB_PK_SECRET_NAME: !Ref GithubPKSecretName
+          PIPELINE_DB_TABLE: !Ref PipelineDB
+
+  NotifyFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt NotifyFunction.Arn
+      Principal: events.amazonaws.com
+      Action: lambda:InvokeFunction
+
+  NofityFunctionArn:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: !Sub "/stack/${AWS::StackName}/NotifyFunctionArn"
+      Value: !GetAtt NotifyFunction.Arn
