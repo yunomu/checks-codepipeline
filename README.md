@@ -48,8 +48,8 @@ Resources:
             - FAILED
             - CANCELED
       Targets:
-        Id: ChecksCodepipelineNotifier
-        Arn: !Ref NotifyFunctionArn
+        - Id: ChecksCodepipelineNotifier
+          Arn: !Ref NotifyFunctionArn
 ```
 
 # Development
